@@ -2426,34 +2426,36 @@ export function usePortalDashboardModel(role: Role) {
     addAuditLog("Permanently deleted all users from trash")
   }
 
-  function handleUpdateUser(updatedUser: UserRecord) {
-    const oldUser = users.find((u) => u.id === updatedUser.id)
+  function handleUpdateUser(updatedUser: UserRecord, originalId?: string) {
+    const effectiveId = originalId || updatedUser.id
+    const oldUser = users.find((u) => u.id === effectiveId)
     const oldName = oldUser?.name
 
     setUsers((current) =>
-      current.map((item) => (item.id === updatedUser.id ? updatedUser : item))
+      current.map((item) => (item.id === effectiveId ? updatedUser : item))
     )
     if (updatedUser.role === "student") {
       const section = updatedUser.section ?? ""
       setRoster((current) => {
-        const exists = current.some((item) => item.id === updatedUser.id)
+        const exists = current.some((item) => item.id === effectiveId)
         if (!exists) {
           return [{ id: updatedUser.id, name: updatedUser.name, section, enrolled: updatedUser.status === "Active", curriculumId: updatedUser.curriculumId, curriculum: updatedUser.curriculum, currentYearLevel: updatedUser.currentYearLevel, currentSemester: updatedUser.currentSemester, studentType: updatedUser.studentType }, ...current]
         }
         return current.map((item) =>
-          item.id === updatedUser.id
-            ? { ...item, name: updatedUser.name, section, firstName: updatedUser.firstName, middleName: updatedUser.middleName, lastName: updatedUser.lastName, curriculumId: updatedUser.curriculumId, curriculum: updatedUser.curriculum, currentYearLevel: updatedUser.currentYearLevel, currentSemester: updatedUser.currentSemester, studentType: updatedUser.studentType }
+          item.id === effectiveId
+            ? { ...item, id: updatedUser.id, name: updatedUser.name, section, firstName: updatedUser.firstName, middleName: updatedUser.middleName, lastName: updatedUser.lastName, curriculumId: updatedUser.curriculumId, curriculum: updatedUser.curriculum, currentYearLevel: updatedUser.currentYearLevel, currentSemester: updatedUser.currentSemester, studentType: updatedUser.studentType }
             : item
         )
       })
       setGrades((current) =>
         current.map((grade) =>
-          grade.studentId === updatedUser.id
-            ? { ...grade, student: updatedUser.name, section }
+          grade.studentId === effectiveId
+            ? { ...grade, studentId: updatedUser.id, student: updatedUser.name, section }
             : grade
         )
       )
-      syncApi("PUT", `/api/portal/roster/${updatedUser.id}`, {
+      syncApi("PUT", `/api/portal/roster/${effectiveId}`, {
+        id: updatedUser.id,
         name: updatedUser.name, section,
         curriculumId: updatedUser.curriculumId,
         curriculum: updatedUser.curriculum,
@@ -2464,7 +2466,7 @@ export function usePortalDashboardModel(role: Role) {
         console.error(`Failed to sync roster for ${updatedUser.id}:`, e)
       )
       for (const grade of grades) {
-        if (grade.studentId === updatedUser.id) {
+        if (grade.studentId === effectiveId) {
           const newSchedule = classSchedules.find(
             (s) => s.section === section && s.subject === grade.subject
           )
@@ -2549,7 +2551,7 @@ export function usePortalDashboardModel(role: Role) {
       }
     }
     addAuditLog(`Updated account "${updatedUser.name}"`)
-    syncApi("PUT", `/api/portal/users/${updatedUser.id}`, updatedUser).then(() =>
+    syncApi("PUT", `/api/portal/users/${effectiveId}`, updatedUser).then(() =>
       toast.success(`User "${updatedUser.name}" updated.`)
     ).catch((e) => {
       toast.error("Failed to update user.")

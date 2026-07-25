@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -97,6 +97,7 @@ export function UsersModule({ model }: PortalModuleProps) {
   } = model
 
   const [editUser, setEditUser] = useState<(UserRecord & { password?: string }) | null>(null)
+  const editUserOriginalIdRef = useRef<string | null>(null)
   const [deleteUserInfo, setDeleteUserInfo] = useState<{ id: string; name: string } | null>(null)
   const [restoreUserId, setRestoreUserId] = useState<string | null>(null)
   const [permanentDeleteUserInfo, setPermanentDeleteUserInfo] = useState<{ id: string; name: string } | null>(null)
@@ -260,12 +261,27 @@ export function UsersModule({ model }: PortalModuleProps) {
       toast.error("First name, last name, and email are required.")
       return
     }
+    if (!editUser.id?.trim()) {
+      toast.error("ID number is required.")
+      return
+    }
+    const duplicateId = users.some(
+      (u) => u.id.trim().toLowerCase() === editUser.id.trim().toLowerCase() && u.id !== editUserOriginalIdRef.current
+    )
+    if (duplicateId) {
+      toast.error("ID number is already in use.")
+      return
+    }
     const fullName = [editUser.firstName, editUser.middleName, editUser.lastName]
       .map((p) => (p ?? "").trim())
       .filter(Boolean)
       .join(" ")
-    handleUpdateUser({ ...editUser, email: editUser.email.toLowerCase().trim(), name: fullName || editUser.name })
+    handleUpdateUser(
+      { ...editUser, email: editUser.email.toLowerCase().trim(), name: fullName || editUser.name },
+      editUserOriginalIdRef.current ?? undefined
+    )
     setEditUser(null)
+    editUserOriginalIdRef.current = null
   }
 
   function handleDeleteConfirm() {
@@ -555,7 +571,7 @@ export function UsersModule({ model }: PortalModuleProps) {
                       </div>
                       <div className="mt-3 flex gap-1.5">
                         <Tooltip content="Edit user">
-                          <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setEditUser(user)}>
+                          <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setEditUser(user); editUserOriginalIdRef.current = user.id }}>
                             <Edit className="size-3.5" />
                           </Button>
                         </Tooltip>
@@ -645,7 +661,7 @@ export function UsersModule({ model }: PortalModuleProps) {
                           <td className="px-5 py-4 align-middle">
                             <div className="flex flex-wrap justify-end gap-2">
                               <Tooltip content="Edit user">
-                                <Button size="icon" variant="outline" className="size-10 rounded-xl" onClick={() => setEditUser(user)} aria-label="Edit user"><Edit className="size-4" /></Button>
+                                <Button size="icon" variant="outline" className="size-10 rounded-xl" onClick={() => { setEditUser(user); editUserOriginalIdRef.current = user.id }} aria-label="Edit user"><Edit className="size-4" /></Button>
                               </Tooltip>
                               {user.role === "student" ? (
                                 <Tooltip content="Change curriculum">
@@ -1595,7 +1611,10 @@ export function UsersModule({ model }: PortalModuleProps) {
 
               <div>
                 <p className="mb-1.5 text-sm font-medium text-foreground">ID Number</p>
-                <p className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm text-foreground/80">{editUser.id}</p>
+                <Input
+                  value={editUser.id}
+                  onChange={(e) => setEditUser({ ...editUser, id: e.target.value })}
+                />
               </div>
 
               <div>

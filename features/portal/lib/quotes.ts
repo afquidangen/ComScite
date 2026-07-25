@@ -511,17 +511,27 @@ export const quotes: { text: string; author: string }[] = [
   { text: "The only real failure in life is not to be true to the best one knows.", author: "Buddha" },
 ]
 
+const yearCache = new Map<number, number>()
+
 export function getDailyQuote() {
   const now = new Date()
-  const startOfYear = new Date(now.getFullYear(), 0, 0)
+  const startOfYear = new Date(now.getFullYear(), 0, 1)
   const diff = now.getTime() - startOfYear.getTime()
-  const dayOfYear = Math.floor(diff / 86400000)
-  let index = dayOfYear % quotes.length
-  const yesterdayAuthor = quotes[(dayOfYear - 1 + quotes.length) % quotes.length].author
-  let attempts = 0
-  while (quotes[index].author === yesterdayAuthor && attempts < quotes.length) {
-    index = (index + 1) % quotes.length
-    attempts++
+  const dayOfYear = Math.max(0, Math.min(366, Math.floor(diff / 86400000)))
+
+  for (let d = 0; d <= dayOfYear; d++) {
+    if (yearCache.has(d)) continue
+    let idx = d % quotes.length
+    if (d > 0) {
+      const prevIdx = yearCache.get(d - 1)!
+      let attempts = 0
+      while (quotes[idx].author === quotes[prevIdx].author && attempts < quotes.length) {
+        idx = (idx + 1) % quotes.length
+        attempts++
+      }
+    }
+    yearCache.set(d, idx)
   }
-  return quotes[index]
+
+  return quotes[yearCache.get(dayOfYear)!]
 }
