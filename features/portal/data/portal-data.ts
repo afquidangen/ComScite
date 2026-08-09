@@ -217,6 +217,8 @@ export type ScheduleItem = {
   instructor: string
   section: string
   curriculumId?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export type CurriculumTerm = {

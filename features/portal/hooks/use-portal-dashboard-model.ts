@@ -335,8 +335,16 @@ export function usePortalDashboardModel(role: Role) {
       const updated = current.map((entry) => {
         const user = users.find((u) => u.id === entry.id && u.role === "student")
         if (!user) return entry
-        const newSection = user.section ?? ""
+        const homeSection = user.section ?? ""
         const newName = user.name
+        const hasHomeRow = homeSection
+          ? current.some(
+              (e) =>
+                e.id === entry.id &&
+                String(e.section ?? "").trim().toLowerCase() === homeSection.trim().toLowerCase()
+            )
+          : false
+        const newSection = hasHomeRow ? entry.section : homeSection || entry.section
         if (entry.section !== newSection || entry.name !== newName) {
           changed = true
           return { ...entry, name: newName, section: newSection, firstName: user.firstName, middleName: user.middleName, lastName: user.lastName }
@@ -511,7 +519,16 @@ export function usePortalDashboardModel(role: Role) {
       }))
   }, [classSchedules, profileUser, profile.name, semesters])
 
-  const profileSection = roster.find((s) => s.id === profile.id && s.enrolled)?.section ?? profileUser?.section ?? ""
+  const profileSection =
+    roster.find(
+      (s) =>
+        s.id === profile.id &&
+        s.enrolled &&
+        String(s.section ?? "").trim().toLowerCase() === String(profileUser?.section ?? "").trim().toLowerCase()
+    )?.section ??
+    roster.find((s) => s.id === profile.id && s.enrolled)?.section ??
+    profileUser?.section ??
+    ""
   const selectedScheduleStudents = useMemo(
     () =>
       selectedScheduleEntry
@@ -566,14 +583,23 @@ export function usePortalDashboardModel(role: Role) {
     () => {
       const active = semesters.find((s) => s.status === "Active")
       if (!active) return []
+      const studentSections = [
+        profileSection,
+        ...roster
+          .filter((r) => r.id === profile.id && r.enrolled)
+          .map((r) => r.section),
+      ].filter(Boolean)
+      const normSection = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+      const normalizedStudentSecs = studentSections.map(normSection)
       return grades.filter(
         (grade) =>
           grade.studentId === profile.id &&
+          (!grade.section || normalizedStudentSecs.includes(normSection(grade.section))) &&
           belongsToActiveSemester(grade, active.id) &&
           grade.released === true
       )
     },
-    [grades, profile.id, semesters, belongsToActiveSemester]
+    [grades, profile.id, semesters, belongsToActiveSemester, profileSection, roster]
   )
 
   const gradeAverage = useMemo(() => {
@@ -596,13 +622,22 @@ export function usePortalDashboardModel(role: Role) {
     () => {
       const active = semesters.find((s) => s.status === "Active")
       if (!active) return []
+      const studentSections = [
+        profileSection,
+        ...roster
+          .filter((r) => r.id === profile.id && r.enrolled)
+          .map((r) => r.section),
+      ].filter(Boolean)
+      const normSection = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+      const normalizedStudentSecs = studentSections.map(normSection)
       return grades.filter(
         (grade) =>
           grade.studentId === profile.id &&
+          (!grade.section || normalizedStudentSecs.includes(normSection(grade.section))) &&
           belongsToActiveSemester(grade, active.id)
       )
     },
-    [grades, profile.id, semesters, belongsToActiveSemester]
+    [grades, profile.id, semesters, belongsToActiveSemester, profileSection, roster]
   )
 
   const currentSemesterGrades = useMemo(
@@ -639,13 +674,32 @@ export function usePortalDashboardModel(role: Role) {
       activeSchedules.map((s) => `${s.section}|${s.subject}`)
     )
 
+    const studentSections = [
+      profileSection,
+      ...roster
+        .filter((r) => r.id === profile.id && r.enrolled)
+        .map((r) => r.section),
+    ].filter(Boolean)
+    const normSection = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+    const normalizedStudentSecs = studentSections.map(normSection)
+    const homeSections = [profileSection].filter(Boolean)
+    const normalizedHomeSecs = homeSections.map(normSection)
+
     const allActive = grades.filter((g) => {
       if (g.studentId !== profile.id) return false
       if (g.deletedAt) return false
+      const hasLiveClass = !!(g.classId && activeScheduleIds.has(g.classId))
+      const hasStaleClass = !!g.classId && !hasLiveClass
+      const gradeHasActiveClass =
+        hasLiveClass ||
+        (g.semesterId && activeIds.has(g.semesterId))
+      if (g.section && !gradeHasActiveClass && !normalizedStudentSecs.includes(normSection(g.section))) return false
+      if (hasStaleClass) return false
+      const isHomeSection = g.section ? normalizedHomeSecs.includes(normSection(g.section)) : false
       return (
+        hasLiveClass ||
         (g.semesterId && activeIds.has(g.semesterId)) ||
-        (g.classId && activeScheduleIds.has(g.classId)) ||
-        activePairs.has(`${g.section}|${g.subject}`)
+        (isHomeSection && activePairs.has(`${g.section}|${g.subject}`))
       )
     })
 
@@ -658,19 +712,14 @@ export function usePortalDashboardModel(role: Role) {
         gradeMap.set(g.code, g)
       } else if (!(g.semesterId && activeIds.has(g.semesterId)) && existing.semesterId && activeIds.has(existing.semesterId)) {
         continue
+      } else if (g.classId && activeScheduleIds.has(g.classId) && !(existing.classId && activeScheduleIds.has(existing.classId))) {
+        gradeMap.set(g.code, g)
+      } else if (existing.classId && activeScheduleIds.has(existing.classId) && !(g.classId && activeScheduleIds.has(g.classId))) {
+        continue
       } else if (g.released && !existing.released) {
         gradeMap.set(g.code, g)
       }
     }
-
-    const studentSections = [
-      profileSection,
-      ...roster
-        .filter((r) => r.id === profile.id && r.enrolled)
-        .map((r) => r.section),
-    ].filter(Boolean)
-    const normSection = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
-    const normalizedStudentSecs = studentSections.map(normSection)
 
     const normalize = (s: string) => s.replace(/\s+/g, "").toLowerCase()
     const finalizedStatuses = new Set(["passed", "failed", "inc", "dropped", "unofficial drop", "unofficial dropped"])
@@ -730,9 +779,7 @@ export function usePortalDashboardModel(role: Role) {
 
     for (const schedule of activeSchedules) {
       const code = schedule.subject.split(" - ")[0]?.trim() ?? schedule.subject
-      const matchesSection = normalizedStudentSecs.some((sec) =>
-        normSection(schedule.section).includes(sec)
-      )
+      const matchesSection = normalizedHomeSecs.includes(normSection(schedule.section))
       if (!matchesSection) continue
       if (finalizedCodes.has(normalize(code)) && !retakeCodes.has(normalize(code))) continue
       if (gradeMap.has(code)) continue
@@ -792,15 +839,24 @@ export function usePortalDashboardModel(role: Role) {
     const belongsToActive = (item: ScheduleItem) =>
       !item.semesterId || activeIds.has(item.semesterId)
 
+    const normalizeCode = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+    const scheduleSubjectInCurriculum = (item: ScheduleItem): boolean => {
+      const code = normalizeCode(item.subject.split(" - ")[0]?.trim() ?? "")
+      if (!code) return true
+      return curricula.some((c) =>
+        c.terms.some((t) => t.subjects.some((s) => normalizeCode(s.code) === code))
+      )
+    }
+
     if (role === "faculty") {
       const facultyName = profileUser?.name ?? profile.name
       return classSchedules.filter((item) =>
-        item.instructor === facultyName && belongsToActive(item)
+        item.instructor === facultyName && belongsToActive(item) && scheduleSubjectInCurriculum(item)
       )
     }
     if (role === "student") {
       const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
-      const normalizeCode = (s: string) => s.replace(/\s+/g, "").toLowerCase()
 
       const passedCodes = new Set(
         (profileUser?.gradeHistory ?? [])
@@ -814,15 +870,51 @@ export function usePortalDashboardModel(role: Role) {
           .filter((r) => r.id === profile.id && r.enrolled)
           .map((r) => r.section),
       ].filter(Boolean)
-      const normalizedStudentSecs = studentSections.map((s) => normalize(s))
+      const homeSections = [profileSection].filter(Boolean)
+      const normalizedHomeSecs = homeSections.map((s) => normalize(s))
+
+      const gradePairs = new Set(
+        visibleGrades
+          .map((g) => `${normalize(g.section ?? "")}|${normalize(g.code)}`)
+          .filter((p) => !p.startsWith("|"))
+      )
+
+      const gradeRefs = new Set(
+        visibleGrades
+          .filter((g) => g.classId)
+          .map((g) => `${normalize(g.section ?? "")}|${g.classId}`)
+      )
+
+      const homeNorm = normalizedHomeSecs[0]
+      const addedCrossCodes = new Set(
+        visibleGrades
+          .filter(
+            (g) =>
+              g.classId &&
+              homeNorm &&
+              normalize(g.section ?? "") !== homeNorm &&
+              classSchedules.some((s) => s.id === g.classId)
+          )
+          .map((g) => normalize(g.code ?? ""))
+      )
+
+      const studentCurriculum = curricula.find((c) => c.id === profileUser?.curriculumId)
+      const studentCurriculumCodes = studentCurriculum
+        ? new Set(studentCurriculum.terms.flatMap((t) => t.subjects.map((s) => normalizeCode(s.code))))
+        : null
 
       const matched = classSchedules.filter((item) => {
         const code = normalize(item.subject.split(" - ")[0]?.trim() ?? "")
         const section = normalize(item.section ?? "")
-        const isEnrolled = normalizedStudentSecs.some((sec) =>
-          section.includes(sec)
+        const isHomeSection = normalizedHomeSecs.includes(section)
+        const hasGradePair = gradePairs.has(`${section}|${code}`)
+        const hasGradeClass = gradeRefs.has(`${section}|${item.id}`)
+        return (
+          ((isHomeSection && !addedCrossCodes.has(code)) || hasGradeClass) &&
+          (!passedCodes.has(code) || hasGradePair) &&
+          belongsToActive(item) &&
+          (scheduleSubjectInCurriculum(item) || hasGradeClass)
         )
-        return isEnrolled && !passedCodes.has(code) && belongsToActive(item)
       })
 
       // Supplement with subjects from visibleGrades not covered by schedules
@@ -833,17 +925,18 @@ export function usePortalDashboardModel(role: Role) {
       for (const grade of visibleGrades) {
         const code = normalizeCode(grade.code)
         if (scheduleCodes.has(code)) continue
+        if (studentCurriculumCodes && !studentCurriculumCodes.has(code)) continue
 
         const existing = classSchedules.find(
           (s) =>
             belongsToActive(s) &&
-            normalizeCode(s.subject.split(" - ")[0]?.trim() ?? "") === code &&
-            normalizedStudentSecs.some((sec) => normalize(s.section ?? "").includes(sec))
+            normalize(s.section ?? "") === normalize(grade.section ?? "") &&
+            s.id === grade.classId
         )
 
         if (existing) {
           matched.push(existing)
-        } else {
+        } else if (normalizedHomeSecs.includes(normalize(grade.section ?? ""))) {
           matched.push({
             id: `noclass-${code}`,
             day: "",
@@ -851,7 +944,7 @@ export function usePortalDashboardModel(role: Role) {
             subject: grade.subject,
             room: "—",
             instructor: "—",
-            section: studentSections[0] ?? grade.section,
+            section: grade.section ?? studentSections[0],
             semesterId: grade.semesterId ?? "",
           })
         }
@@ -861,7 +954,7 @@ export function usePortalDashboardModel(role: Role) {
       return matched
     }
     return classSchedules
-  }, [classSchedules, role, profileUser, profile.name, roster, profileSection, profile.id, semesters, visibleGrades])
+  }, [classSchedules, role, profileUser, profile.name, roster, profileSection, profile.id, semesters, visibleGrades, curricula])
 
   const currentSemesterTotalUnits = useMemo(
     () => currentSemesterGrades.reduce((s, g) => s + (g.units || 0), 0),
@@ -1709,9 +1802,17 @@ export function usePortalDashboardModel(role: Role) {
     const normSubject = normalize(subjectLabel)
     const normSection = normalize(section)
 
-    const schedule = classSchedules.find(
-      (s) => normalize(s.subject ?? "") === normSubject && normalize(s.section ?? "") === normSection
-    )
+    const facultyName = profileUser?.name ?? profile.name
+    const schedule =
+      classSchedules.find(
+        (s) =>
+          normalize(s.subject ?? "") === normSubject &&
+          normalize(s.section ?? "") === normSection &&
+          normalize(s.instructor ?? "") === normalize(facultyName)
+      ) ??
+      classSchedules.find(
+        (s) => normalize(s.subject ?? "") === normSubject && normalize(s.section ?? "") === normSection
+      )
     const classId = schedule?.id
 
     const existingPassed = grades.find(
@@ -1735,40 +1836,68 @@ export function usePortalDashboardModel(role: Role) {
         console.error("Failed to update grade for re-enrolled student:", e)
       )
     } else {
-      const exists = grades.some(
-        (g) => normalize(g.subject ?? "") === normSubject && normalize(g.section ?? "") === normSection && g.studentId === studentId
+      const existing = grades.find(
+        (g) =>
+          !g.deletedAt &&
+          normalize(g.subject ?? "") === normSubject &&
+          normalize(g.section ?? "") === normSection &&
+          g.studentId === studentId
       )
-      if (exists) return
+      const studentUser = users.find((u) => u.id === studentId)
+      const isGenuine =
+        !!existing &&
+        (!!existing.classId || normalize(studentUser?.section ?? "") === normSection)
+      if (isGenuine) return
 
-      const newId = `GRD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-      const newGrade: GradeRecord = {
-        id: newId,
-        studentId,
-        student: studentName,
-        section,
-        subject: subjectLabel,
-        code: subjectCode,
-        units: 3,
-        classId,
-        semesterId: schedule?.semesterId,
-        midtermTransmuted: undefined,
-        midterm: 0,
-        finalTransmuted: undefined,
-        finalTerm: 0,
-        released: false,
-        updatedAt: now,
-      }
-      setGrades((current) => [newGrade, ...current])
-      syncApi<{ data: GradeRecord }>("POST", "/api/portal/grades", newGrade).then((res) => {
-        const serverGrade = res?.data
-        if (serverGrade?.id && serverGrade.id !== newId) {
-          setGrades((current) => current.map((g) => g.id === newId ? { ...g, ...serverGrade } : g))
+      if (existing) {
+        const updated = {
+          ...existing,
+          classId,
+          semesterId: schedule?.semesterId ?? existing.semesterId,
+          updatedAt: now,
         }
-      }).catch((e) => {
-        setGrades((current) => current.filter((g) => g.id !== newId))
-        console.error("Failed to save grade record:", e)
-        toast.error("Failed to save grade record for the added student.")
-      })
+        setGrades((current) => current.map((g) => (g.id === existing.id ? updated : g)))
+        void syncApi("PUT", `/api/portal/grades/${existing.id}`, updated).catch((e) =>
+          console.error("Failed to update grade for added student:", e)
+        )
+      } else {
+        const newId = `GRD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        const newGrade: GradeRecord = {
+          id: newId,
+          studentId,
+          student: studentName,
+          section,
+          subject: subjectLabel,
+          code: subjectCode,
+          units: 3,
+          classId,
+          semesterId: schedule?.semesterId,
+          midtermTransmuted: undefined,
+          midterm: 0,
+          finalTransmuted: undefined,
+          finalTerm: 0,
+          released: false,
+          updatedAt: now,
+        }
+        setGrades((current) => [newGrade, ...current])
+        syncApi<{ data: GradeRecord }>("POST", "/api/portal/grades", newGrade).then((res) => {
+          const serverGrade = res?.data
+          if (serverGrade?.id && serverGrade.id !== newId) {
+            setGrades((current) => current.map((g) => g.id === newId ? { ...g, ...serverGrade } : g))
+          }
+        }).catch((e) => {
+          setGrades((current) => current.filter((g) => g.id !== newId))
+          console.error("Failed to save grade record:", e)
+          toast.error("Failed to save grade record for the added student.")
+        })
+      }
+    }
+
+    const inRoster = roster.some((r) => r.id === studentId && r.section === section)
+    if (!inRoster) {
+      const newRosterEntry = { id: studentId, name: studentName, section, enrolled: true }
+      setRoster((current) => [newRosterEntry, ...current])
+      void syncApi("PUT", `/api/portal/roster/${studentId}?section=${encodeURIComponent(section)}`, newRosterEntry)
     }
 
     addAuditLog(`Added student ${studentName} to ${subjectLabel} (${section})`)
@@ -1788,9 +1917,17 @@ export function usePortalDashboardModel(role: Role) {
     const normSubject = normalize(subjectLabel)
     const normSection = normalize(section)
 
-    const schedule = classSchedules.find(
-      (s) => normalize(s.subject ?? "") === normSubject && normalize(s.section ?? "") === normSection
-    )
+    const facultyName = profileUser?.name ?? profile.name
+    const schedule =
+      classSchedules.find(
+        (s) =>
+          normalize(s.subject ?? "") === normSubject &&
+          normalize(s.section ?? "") === normSection &&
+          normalize(s.instructor ?? "") === normalize(facultyName)
+      ) ??
+      classSchedules.find(
+        (s) => normalize(s.subject ?? "") === normSubject && normalize(s.section ?? "") === normSection
+      )
     const classId = schedule?.id
 
     if (!classId) {
@@ -1867,6 +2004,13 @@ export function usePortalDashboardModel(role: Role) {
           ? [roster.find((r) => r.id === studentId)!.section]
           : []
 
+    const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase()
+    const ownSections = new Set(
+      [studentUser?.section, ...roster.filter((r) => r.id === studentId).map((r) => r.section)]
+        .filter((s): s is string => Boolean(s))
+        .map(norm)
+    )
+
     for (const section of sections) {
       const existing = grades.find(
         (g) => g.studentId === studentId && g.code === subjectCode && g.section === section
@@ -1913,7 +2057,7 @@ export function usePortalDashboardModel(role: Role) {
       }
 
       const inRoster = roster.some((r) => r.id === studentId && r.section === section)
-      if (!inRoster) {
+      if (!inRoster && ownSections.has(norm(section))) {
         const newRosterEntry = { id: studentId, name: studentName, section, enrolled: true }
         setRoster((current) => [newRosterEntry, ...current])
         void syncApi("PUT", `/api/portal/roster/${studentId}?section=${encodeURIComponent(section)}`, newRosterEntry)
@@ -2430,6 +2574,7 @@ export function usePortalDashboardModel(role: Role) {
     const effectiveId = originalId || updatedUser.id
     const oldUser = users.find((u) => u.id === effectiveId)
     const oldName = oldUser?.name
+    const oldSection = oldUser?.section
 
     setUsers((current) =>
       current.map((item) => (item.id === effectiveId ? updatedUser : item))
@@ -2442,19 +2587,19 @@ export function usePortalDashboardModel(role: Role) {
           return [{ id: updatedUser.id, name: updatedUser.name, section, enrolled: updatedUser.status === "Active", curriculumId: updatedUser.curriculumId, curriculum: updatedUser.curriculum, currentYearLevel: updatedUser.currentYearLevel, currentSemester: updatedUser.currentSemester, studentType: updatedUser.studentType }, ...current]
         }
         return current.map((item) =>
-          item.id === effectiveId
+          item.id === effectiveId && item.section === oldSection
             ? { ...item, id: updatedUser.id, name: updatedUser.name, section, firstName: updatedUser.firstName, middleName: updatedUser.middleName, lastName: updatedUser.lastName, curriculumId: updatedUser.curriculumId, curriculum: updatedUser.curriculum, currentYearLevel: updatedUser.currentYearLevel, currentSemester: updatedUser.currentSemester, studentType: updatedUser.studentType }
             : item
         )
       })
       setGrades((current) =>
         current.map((grade) =>
-          grade.studentId === effectiveId
+          grade.studentId === effectiveId && grade.section === oldSection
             ? { ...grade, studentId: updatedUser.id, student: updatedUser.name, section }
             : grade
         )
       )
-      syncApi("PUT", `/api/portal/roster/${effectiveId}`, {
+      syncApi("PUT", `/api/portal/roster/${effectiveId}?fromSection=${encodeURIComponent(oldSection ?? "")}`, {
         id: updatedUser.id,
         name: updatedUser.name, section,
         curriculumId: updatedUser.curriculumId,
@@ -2466,7 +2611,7 @@ export function usePortalDashboardModel(role: Role) {
         console.error(`Failed to sync roster for ${updatedUser.id}:`, e)
       )
       for (const grade of grades) {
-        if (grade.studentId === effectiveId) {
+        if (grade.studentId === effectiveId && grade.section === oldSection) {
           const newSchedule = classSchedules.find(
             (s) => s.section === section && s.subject === grade.subject
           )
@@ -2474,16 +2619,13 @@ export function usePortalDashboardModel(role: Role) {
             student: updatedUser.name,
             section,
           }
-          if (newSchedule) {
-            updateData.classId = newSchedule.id
-          }
+          updateData.classId = newSchedule ? newSchedule.id : null
           syncApi("PUT", `/api/portal/grades/${grade.id}`, updateData).catch((e) =>
             console.error(`Failed to sync grade ${grade.id}:`, e)
           )
         }
       }
 
-      const oldSection = oldUser?.section
       if (section !== oldSection) {
         const activeSemesterIds = new Set(
           semesters.filter((s) => s.status === "Active").map((s) => s.id)
@@ -3210,36 +3352,39 @@ export function usePortalDashboardModel(role: Role) {
       console.error(e)
     })
 
+    const normalizeSection = (s?: string) => (s ?? "").replace(/\s+/g, "").toLowerCase()
     for (const student of roster) {
-      if (student.section === sectionStr && student.enrolled) {
-        const exists = grades.some(
-          (g) => g.studentId === student.id && g.subject === subjectStr && g.section === sectionStr
-        )
-        if (!exists) {
-          const newId = `GRD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-          const newGrade: GradeRecord = {
-            id: newId,
-            studentId: student.id,
-            student: student.name,
-            section: sectionStr,
-            subject: subjectStr,
-            code: subjectCode,
-            units: 3,
-            midtermTransmuted: undefined,
-            midterm: 0,
-            finalTransmuted: undefined,
-            finalTerm: 0,
-            released: false,
-            updatedAt: now,
-          }
-          setGrades((current) => [newGrade, ...current])
-          syncApi("POST", "/api/portal/grades", newGrade).catch(() => {
-            setGrades((current) => current.filter((g) => g.id !== newId))
-          })
+      if (student.section !== sectionStr || !student.enrolled) continue
+      const studentUser = users.find((u) => u.id === student.id)
+      const isHomeSection =
+        !!studentUser && normalizeSection(studentUser.section) === normalizeSection(sectionStr)
+      if (!isHomeSection) continue
+      const exists = grades.some(
+        (g) => g.studentId === student.id && g.subject === subjectStr && g.section === sectionStr
+      )
+      if (!exists) {
+        const newId = `GRD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        const newGrade: GradeRecord = {
+          id: newId,
+          studentId: student.id,
+          student: student.name,
+          section: sectionStr,
+          subject: subjectStr,
+          code: subjectCode,
+          units: 3,
+          midtermTransmuted: undefined,
+          midterm: 0,
+          finalTransmuted: undefined,
+          finalTerm: 0,
+          released: false,
+          updatedAt: now,
         }
+        setGrades((current) => [newGrade, ...current])
+        syncApi("POST", "/api/portal/grades", newGrade).catch(() => {
+          setGrades((current) => current.filter((g) => g.id !== newId))
+        })
       }
     }
-
     setScheduleDraft({
       semesterId: scheduleDraft.semesterId,
       day: "",

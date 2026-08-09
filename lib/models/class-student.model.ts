@@ -16,7 +16,7 @@ export interface IClassStudent extends Document {
 
 const ClassStudentSchema = new Schema<IClassStudent>(
   {
-    id: { type: String, required: true, unique: true },
+    id: { type: String, required: true },
     name: { type: String, required: true },
     section: String,
     enrolled: { type: Boolean, default: true },
@@ -30,6 +30,8 @@ const ClassStudentSchema = new Schema<IClassStudent>(
   },
   { timestamps: true }
 )
+
+ClassStudentSchema.index({ id: 1, section: 1 }, { unique: true })
 
 export const ClassStudentModel =
   (mongoose.models.ClassStudent as Model<IClassStudent> | undefined) ??

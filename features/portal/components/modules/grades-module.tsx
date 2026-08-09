@@ -387,7 +387,11 @@ export function GradesModule({ model }: PortalModuleProps) {
 
     const expectedCodes = new Set<string>()
     for (const s of activeSchedules) {
-      const matchesSection = studentSections.some((sec) => s.section.includes(sec))
+      const matchesSection = studentSections.some(
+        (sec) =>
+          s.section.replace(/\s+/g, "").toLowerCase() ===
+          sec.replace(/\s+/g, "").toLowerCase()
+      )
       if (!matchesSection) continue
       const code = normalize(s.subject.split(" - ")[0]?.trim() ?? s.subject)
       expectedCodes.add(code)

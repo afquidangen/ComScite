@@ -328,7 +328,15 @@ function AdminView({ model }: { model: PortalModuleProps["model"] }) {
     if (selectedScheduleSection !== "All Sections") {
       result = result.filter((s) => s.section === selectedScheduleSection)
     }
-    return result
+    const scheduleTs = (s: ScheduleItem): number => {
+      if (s.createdAt) {
+        const t = Date.parse(s.createdAt)
+        if (!Number.isNaN(t)) return t
+      }
+      const n = Number(String(s.id).split("-").pop())
+      return Number.isNaN(n) ? 0 : n
+    }
+    return [...result].sort((a, b) => scheduleTs(b) - scheduleTs(a))
   }, [classSchedules, selectedSemesterId, selectedScheduleYear, selectedScheduleSection, yearSections])
 
   return (

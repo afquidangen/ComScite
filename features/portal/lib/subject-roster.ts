@@ -34,10 +34,12 @@ type RawGradeItem = {
   subject: string
   released?: boolean
   deletedAt?: string | null
+  classId?: string
 }
 
 type RawUserItem = {
   id: string
+  section?: string
   studentType?: string
   deletedAt?: string | null
   firstName?: string
@@ -76,10 +78,13 @@ export function getSubjectRoster(params: {
       !sectionSet.has(normalize(g.section ?? ""))
     ) continue
 
+    const user = users.find((u) => u.id === g.studentId)
+    const isHomeSection = normalize(user?.section) === normalize(g.section ?? "")
+    if (!isHomeSection && !g.classId) continue
+
     if (seen.has(g.studentId)) continue
     seen.add(g.studentId)
 
-    const user = users.find((u) => u.id === g.studentId)
     result.push({
       id: g.studentId,
       name: g.student,

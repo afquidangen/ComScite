@@ -27,6 +27,7 @@ export async function PUT(
     const { id } = await params
     const url = new URL(request.url)
     const section = url.searchParams.get("section")
+    const fromSection = url.searchParams.get("fromSection")
 
     await connectToDatabase()
     const user = await UserModel.findOne({ id }).select("role").lean()
@@ -35,6 +36,11 @@ export async function PUT(
     }
 
     const body = await request.json()
+
+    if (fromSection) {
+      await rosterRepository.updateMany({ id, section: fromSection }, body)
+      return success({ updated: true })
+    }
 
     if (section) {
       const student = await rosterRepository.upsert({ id, section }, body)

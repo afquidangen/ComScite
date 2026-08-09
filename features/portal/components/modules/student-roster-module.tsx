@@ -34,6 +34,18 @@ function getInitials(name: string) {
     .slice(0, 2)
 }
 
+function sortStudentsByName<T extends { id: string; name: string; lastName?: string; firstName?: string; middleName?: string }>(a: T, b: T) {
+  const aLast = a.lastName ?? a.name.split(" ").pop() ?? ""
+  const bLast = b.lastName ?? b.name.split(" ").pop() ?? ""
+  const lastCmp = aLast.localeCompare(bLast)
+  if (lastCmp !== 0) return lastCmp
+  const aFirst = a.firstName ?? a.name.split(" ")[0] ?? ""
+  const bFirst = b.firstName ?? b.name.split(" ")[0] ?? ""
+  const firstCmp = aFirst.localeCompare(bFirst)
+  if (firstCmp !== 0) return firstCmp
+  return a.id.localeCompare(b.id)
+}
+
 export function StudentRosterModule({ model }: PortalModuleProps) {
   const {
     facultySubjects,
@@ -89,7 +101,11 @@ export function StudentRosterModule({ model }: PortalModuleProps) {
           if (g.deletedAt) return false
           if (normalize(g.subject ?? "") !== normalize(selectedSubject ?? "")) return false
           if (normalize(g.section ?? "") !== normalize(addSection)) return false
-          return g.remarks !== "Passed"
+          if (g.remarks === "Passed") return false
+          const studentUser = users.find((u) => u.id === g.studentId)
+          const isGenuine =
+            !!g.classId || normalize(studentUser?.section) === normalize(addSection)
+          return isGenuine
         })
         .map((g) => g.studentId)
     )
@@ -99,7 +115,7 @@ export function StudentRosterModule({ model }: PortalModuleProps) {
       const name = (u.name ?? "").replace(/\s+/g, "").toLowerCase()
       const id = (u.id ?? "").toLowerCase()
       return !alreadyInSubject.has(u.id) && (name.includes(search) || id.includes(search))
-    })
+    }).sort(sortStudentsByName)
   }, [studentSearch, users, grades, selectedSubject, addSection])
 
   function handleAdd(studentId: string, studentName: string) {
@@ -149,7 +165,7 @@ export function StudentRosterModule({ model }: PortalModuleProps) {
       subjectCode: currentSubject.code,
       section: selectedSection,
       sections: sectionOptions,
-    })
+    }).sort(sortStudentsByName)
   }, [grades, roster, users, selectedSubject, selectedSection, sectionOptions, currentSubject])
 
   return (

@@ -163,7 +163,7 @@ export function MyClassesModule({ model }: PortalModuleProps) {
                     <tr key={item.id} className="transition-colors hover:bg-muted/50">
                       <td className="px-4 py-3 font-medium text-foreground">{item.subject}</td>
                       <td className="px-4 py-3 text-foreground/80">{item.instructor}</td>
-                      <td className="px-4 py-3 text-foreground/80">{item.day}, {formatScheduleTime(item.time)}</td>
+                      <td className="px-4 py-3 text-foreground/80">{item.day && item.time ? `${item.day}, ${formatScheduleTime(item.time)}` : "—"}</td>
                       <td className="hidden sm:table-cell px-4 py-3 text-foreground/80">{item.room}</td>
                       <td className="hidden sm:table-cell px-4 py-3 text-foreground/80">{item.section}</td>
                     </tr>

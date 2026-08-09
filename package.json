@@ -12,6 +12,8 @@
     "lint": "eslint",
     "seed": "tsx scripts/seed.ts",
     "seed:schemes": "tsx scripts/seed-grading-schemes.ts",
+    "cleanup:orphan-grades": "tsx scripts/cleanup-orphan-section-grades.ts",
+    "migrate:roster-section-unique": "tsx scripts/migrate-roster-section-unique.ts",
     "migrate:performance-category": "tsx scripts/migrate-performance-category.ts",
     "migrate:faculty-isDeleted": "tsx scripts/migrate-faculty-isDeleted.ts"
   },
