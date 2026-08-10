@@ -280,15 +280,29 @@ function AdminView({ model }: { model: PortalModuleProps["model"] }) {
   const sectionRoster = useMemo(() => {
     if (!selectedYear) return []
     const sections = selectedYear.sections
-    return roster.filter((s) => {
-      if (!sections.includes(s.section)) return false
-      if (selectedRosterSection !== "All Sections" && s.section !== selectedRosterSection) return false
-      return true
-    })
-  }, [roster, selectedYear, selectedRosterSection])
+    return users
+      .filter((u) => u.role === "student" && !u.deletedAt)
+      .filter((u) => {
+        const sec = u.section ?? ""
+        if (!sections.includes(sec)) return false
+        if (selectedRosterSection !== "All Sections" && sec !== selectedRosterSection) return false
+        return true
+      })
+      .sort((a, b) => {
+        const aLast = a.lastName ?? a.name.split(" ").pop() ?? ""
+        const bLast = b.lastName ?? b.name.split(" ").pop() ?? ""
+        const lastCmp = aLast.localeCompare(bLast)
+        if (lastCmp !== 0) return lastCmp
+        const aFirst = a.firstName ?? a.name.split(" ")[0] ?? ""
+        const bFirst = b.firstName ?? b.name.split(" ")[0] ?? ""
+        const firstCmp = aFirst.localeCompare(bFirst)
+        if (firstCmp !== 0) return firstCmp
+        return a.id.localeCompare(b.id)
+      })
+  }, [users, selectedYear, selectedRosterSection])
 
   const studentsByYearLevel = useMemo(() => {
-    const studentUsers = users.filter((u) => u.role === "student")
+    const studentUsers = users.filter((u) => u.role === "student" && !u.deletedAt)
     const counts: Record<string, number> = {
       "First Year": 0,
       "Second Year": 0,
@@ -304,12 +318,13 @@ function AdminView({ model }: { model: PortalModuleProps["model"] }) {
   }, [users])
 
   const studentsBySection = useMemo(() => {
+    const studentUsers = users.filter((u) => u.role === "student" && !u.deletedAt)
     const counts: Record<string, number> = {}
     for (const section of sectionOptions) {
-      counts[section] = roster.filter((r) => r.section === section).length
+      counts[section] = studentUsers.filter((u) => u.section === section).length
     }
     return counts
-  }, [roster, sectionOptions])
+  }, [users, sectionOptions])
 
   const expandedYearSections = useMemo(() => {
     if (!expandedYearForSections) return []
@@ -638,22 +653,26 @@ function AdminView({ model }: { model: PortalModuleProps["model"] }) {
                 </thead>
                 <tbody className="divide-y divide-border bg-card">
                   {sectionRoster.map((student) => {
-                    const user = users.find((u) => u.id === student.id)
+                    const displayName = [
+                      student.firstName,
+                      student.middleName ? `${student.middleName[0]}.` : "",
+                      student.lastName,
+                    ].filter(Boolean).join(" ") || student.name
                     return (
                     <tr key={student.id} className="transition-colors hover:bg-muted/50">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <Avatar className="size-10 shrink-0 ring-1 ring-border">
-                            <AvatarImage src={user?.photoUrl} alt={student.name} className="object-cover" />
-                            <AvatarFallback className="bg-muted text-xs text-foreground">{getInitials(student.name)}</AvatarFallback>
+                            <AvatarImage src={student.photoUrl} alt={displayName} className="object-cover" />
+                            <AvatarFallback className="bg-muted text-xs text-foreground">{getInitials(`${student.firstName ?? ""} ${student.lastName ?? ""}`)}</AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-foreground">{student.name}</p>
+                            <p className="truncate font-medium text-foreground">{displayName}</p>
                             <p className="truncate text-xs text-muted-foreground">{student.id}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="hidden sm:table-cell px-4 py-3 text-foreground/80">{user?.course || "—"}</td>
+                      <td className="hidden sm:table-cell px-4 py-3 text-foreground/80">{student.course || "—"}</td>
                       <td className="hidden sm:table-cell px-4 py-3 text-foreground/80">{student.currentYearLevel || "—"}</td>
                       <td className="hidden sm:table-cell px-4 py-3 text-foreground/80">{student.section}</td>
                     </tr>
