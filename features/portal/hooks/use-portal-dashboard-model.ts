@@ -910,10 +910,10 @@ export function usePortalDashboardModel(role: Role) {
         const hasGradePair = gradePairs.has(`${section}|${code}`)
         const hasGradeClass = gradeRefs.has(`${section}|${item.id}`)
         return (
-          ((isHomeSection && !addedCrossCodes.has(code)) || hasGradeClass) &&
+          ((isHomeSection && !addedCrossCodes.has(code)) || hasGradeClass || hasGradePair) &&
           (!passedCodes.has(code) || hasGradePair) &&
           belongsToActive(item) &&
-          (scheduleSubjectInCurriculum(item) || hasGradeClass)
+          (scheduleSubjectInCurriculum(item) || hasGradeClass || hasGradePair)
         )
       })
 
